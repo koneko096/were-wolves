@@ -57,7 +57,6 @@ public class UIManager : MonoBehaviour
 
     [Header("Lobby Scene")]
     public Button findPlayersButton;
-    public Button readyButton;
     public Text lobbyPlayerListText;
     public Text voteCountText;
 
@@ -193,19 +192,13 @@ public class UIManager : MonoBehaviour
         //if (phaseText != null)
         //    phaseText.text = $"Phase: {Game.CurrentPhase}";
 
-        //if (roleText != null)
-        //    roleText.text = $"Role: {Game.MyRole}";
+        if (roleText != null)
+            roleText.text = $"Role: {Game.MyRole}";
 
         //if (gameInfoText != null)
         //    gameInfoText.text = Game.GetGameInfo();
 
-        // Button states
-        //if (readyButton != null)
-        //    readyButton.interactable = (Game.CurrentPhase == GamePhase.Lobby);
-
-        //if (resetButton != null)
-        //    resetButton.interactable = (Game.CurrentPhase == GamePhase.GameOver);
-
+        // Game states
         if (Game.CurrentPhase == GamePhase.GameOver)
         {
             ShowPanel(endGamePanel);
