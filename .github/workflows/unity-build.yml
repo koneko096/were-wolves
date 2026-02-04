@@ -1,0 +1,101 @@
+name: Unity Build
+on:
+  push:
+    branches: ['master']
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    branches: ['master']
+  workflow_dispatch:
+    inputs:
+      clean:
+        description: 'Cleans the library folder and deletes cached items'
+        required: false
+        default: false
+        type: 'boolean'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{(github.event_name == 'pull_request' || github.event.action == 'synchronize')}}
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }} ${{ matrix.build-target }}
+    if: github.event.pull_request.draft == false
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            build-target: StandaloneWindows64
+          - os: ubuntu-latest
+            build-target: WebGL
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          clean: ${{ github.event.inputs.clean == 'true' }}
+      - uses: actions/cache@v3
+        with:
+          path: Library
+          key: Library-${{ matrix.build-target }}
+          restore-keys: |
+            Library-${{ matrix.build-target }}-
+            Library-
+      - uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          projectPath: .
+          unityVersion: 6000.0.68f1
+          targetPlatform: ${{ matrix.build-target }}
+      - uses: actions/upload-artifact@v4
+        if: success() || failure()
+        with:
+          compression-level: 0
+          retention-days: 1
+          name: ${{ github.run_number }}.${{ github.run_attempt }}-${{ matrix.build-target }}-Artifacts
+          path: |
+            ${{ github.workspace }}/**/*.log
+            Builds/${{ matrix.build-target }}/**
+
+  deploy-vercel:
+    name: Deploy to Vercel
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download WebGL Artifact
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*-WebGL-Artifacts"
+          merge-multiple: true
+          path: build-output
+
+      - name: Copy Vercel Configuration Files
+        run: |
+          BUILD_PATH=$(find build-output -name "index.html" -exec dirname {} \;)
+          echo "Detected build path: $BUILD_PATH"
+          cp vercel.json "$BUILD_PATH/"
+          cp .gitattributes "$BUILD_PATH/"
+          echo "DEPLOY_PATH=$BUILD_PATH" >> $GITHUB_ENV
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel
+
+      - name: Deploy to Vercel
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          vercel --prod --confirm --token=${{ secrets.VERCEL_TOKEN }} \
+                 --scope=${{ secrets.VERCEL_ORG_ID }} \
+                 --project=${{ secrets.VERCEL_PROJECT_ID }} \
+                 --cwd=${{ env.DEPLOY_PATH }}
